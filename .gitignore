@@ -1,0 +1,24 @@
+# Unreal Engine: Ignore Build/Intermediate/Saved/Binaries
+UnrealSimulation/Binaries/
+UnrealSimulation/Intermediate/
+UnrealSimulation/Saved/
+UnrealSimulation/DerivedDataCache/
+
+# CMake: Ignore build artifacts
+# Ignore CMake build artifacts
+SimulationServer/build/
+SimulationServer/.vs/
+SimulationServer/CMakeCache.txt
+SimulationServer/CMakeFiles/
+SimulationServer/*.vcxproj*
+SimulationServer/*.sln
+SimulationServer/*.user
+SimulationServer/*.opensdf
+SimulationServer/*.opendb
+SimulationServer/*.VC.db
+
+# General
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
