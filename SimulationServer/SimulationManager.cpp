@@ -28,85 +28,69 @@ void SimulationManager::updateSimulation() {
     using namespace std::chrono_literals;
 
     const auto targetTimeStep = std::chrono::milliseconds(GameConfig::UPDATE_INTERVAL_MS);
-    int stepCount = 0;
-    float accumulatedTime = 0.0f;  // For tracking sub-timestep time
-
-    auto lastUpdateTime = Clock::now();
-    auto nextUpdateTime = lastUpdateTime + targetTimeStep;
+    auto nextUpdateTime = Clock::now() + targetTimeStep;
 
     std::cout << "[Server] Simulation loop started.\n";
 
     while (!exitFlag) {
-        // Calculate actual elapsed time since last update
-        auto currentTime = Clock::now();
-        auto elapsedTime = std::chrono::duration<float, std::milli>(currentTime - lastUpdateTime).count();
-        lastUpdateTime = currentTime;
+        // Wait until it's time for the next update
+        auto timeToWait = nextUpdateTime - Clock::now();
+        if (timeToWait.count() > 0) {
+            std::this_thread::sleep_for(timeToWait);
+        }
 
-        // Add to our accumulated time bank
-        accumulatedTime += elapsedTime;
+        // Process a single step of simulation
+        {
+            std::lock_guard<std::mutex> lock(ballMutex);
+            if (clientConnected) {
+                if (!simulationStarted) {
+                    std::cout << "[Server] Client connected. Starting simulation in 3 seconds...\n";
+                    simulationStarted = true;
 
-        // Process as many fixed timesteps as we have accumulated time for
-        while (accumulatedTime >= GameConfig::UPDATE_INTERVAL_MS && !exitFlag) {
-            {
-                std::lock_guard<std::mutex> lock(ballMutex);
-                if (clientConnected) {
-                    if (!simulationStarted) {
-                        std::cout << "[Server] Client connected. Starting simulation in 3 seconds...\n";
-                        simulationStarted = true;
-
-                        dataUpdated = true;
-                        dataReadyCV.notify_one();
-
-                        std::this_thread::sleep_for(std::chrono::seconds(3));
-                        std::cout << "[Server] Simulation started!\n";
-
-                        // Reset timing variables after delay
-                        lastUpdateTime = Clock::now();
-                        accumulatedTime = 0.0f;
-                        break;  // Exit the inner while loop after setup
-                    }
-
-                    if (simulationStarted) {
-                        // Update all active balls with a fixed time step
-                        for (auto& ball : balls) {
-                            if (!ball->isDead()) {
-                                // Pass the fixed timestep value to updateCooldowns
-                                ball->updateCooldowns();
-
-                                std::shared_ptr<Ball> target = findNearestEnemy(ball);
-                                if (target) {
-                                    ball->moveToward(target);
-                                }
-                                else {
-                                    ball->wander();
-                                }
-                            }
-                        }
-
-                        handleCombat();
-                        removeDeadBalls();
-                    }
-
+                    // Notify client that we're ready to start
                     dataUpdated = true;
                     dataReadyCV.notify_one();
+
+                    std::this_thread::sleep_for(std::chrono::seconds(3));
+                    std::cout << "[Server] Simulation started!\n";
+
+                    // Reset next update time after the initial delay
+                    nextUpdateTime = Clock::now() + targetTimeStep;
+                    continue;
                 }
+
+                if (simulationStarted) {
+                    // Update simulation state
+                    for (auto& ball : balls) {
+                        if (!ball->isDead()) {
+                            ball->updateCooldowns();
+                            std::shared_ptr<Ball> target = findNearestEnemy(ball);
+                            if (target) {
+                                ball->moveToward(target);
+                            }
+                            else {
+                                ball->wander();
+                            }
+                        }
+                    }
+
+                    handleCombat();
+                    removeDeadBalls();
+                }
+
+                // Mark data as updated for network thread
+                dataUpdated = true;
+                dataReadyCV.notify_one();
             }
-
-            // Consume a fixed amount of time from our accumulator
-            accumulatedTime -= GameConfig::UPDATE_INTERVAL_MS;
-            stepCount++;
         }
 
-        // If we're running ahead of schedule, sleep until next update time
-        nextUpdateTime = lastUpdateTime + std::chrono::milliseconds(GameConfig::UPDATE_INTERVAL_MS);
-        auto sleepTime = nextUpdateTime - Clock::now();
-        if (sleepTime > std::chrono::milliseconds(0)) {
-            std::this_thread::sleep_for(sleepTime);
-        }
+        // Schedule next update exactly 100ms after the current one
+        nextUpdateTime += targetTimeStep;
     }
 
-    std::cout << "[Server] Simulation loop exited after " << stepCount << " steps.\n";
+    std::cout << "[Server] Simulation loop exited.\n";
 }
+
 
 
 std::shared_ptr<Ball> SimulationManager::findNearestEnemy(const std::shared_ptr<Ball>& ball) {
@@ -223,8 +207,7 @@ bool SimulationManager::shouldExit() const {
 
 void SimulationManager::waitForUpdate() {
     std::unique_lock<std::mutex> lock(ballMutex);
-    dataReadyCV.wait_for(lock, std::chrono::milliseconds(GameConfig::UPDATE_INTERVAL_MS),
-        [this] { return dataUpdated || exitFlag; });
+    dataReadyCV.wait(lock, [this] { return dataUpdated || exitFlag; });
 }
 
 void SimulationManager::resetUpdateFlag() {

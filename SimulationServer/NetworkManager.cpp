@@ -103,8 +103,10 @@ void NetworkManager::sendSimulationData() {
     if (clientSocket == INVALID_SOCKET) return;
 
     std::string lastSentData;
+    auto lastSendTime = std::chrono::steady_clock::now();
 
     while (!simulationManager.shouldExit()) {
+        // Wait for simulation update
         simulationManager.waitForUpdate();
 
         if (simulationManager.isGameOver()) {
@@ -112,6 +114,7 @@ void NetworkManager::sendSimulationData() {
             break;
         }
 
+        // Prepare data packet
         auto balls = simulationManager.getBalls();
         std::ostringstream ss;
         ss << balls.size();
@@ -123,23 +126,26 @@ void NetworkManager::sendSimulationData() {
 
         std::string updateMessage = ss.str();
 
-        if (updateMessage == lastSentData) continue;
+        // Only send if data has changed
+        if (updateMessage != lastSentData) {
+            lastSentData = updateMessage;
 
-        lastSentData = updateMessage;
-        int result = send(clientSocket, updateMessage.c_str(), static_cast<int>(updateMessage.length()), 0);
+            // Send the data packet
+            int result = send(clientSocket, updateMessage.c_str(), static_cast<int>(updateMessage.length()), 0);
 
-        if (result == SOCKET_ERROR) {
-            std::cerr << "[Server] Client disconnected. Stopping server.\n";
-            return;
+            if (result == SOCKET_ERROR) {
+                std::cerr << "[Server] Client disconnected. Stopping server.\n";
+                simulationManager.signalShouldExit();
+                return;
+            }
+
+            std::cout << getCurrentTimestamp() << " [Server] Sent data: " << updateMessage << std::endl;
         }
 
-        std::cout << getCurrentTimestamp() << " [Server] Sent data: " << updateMessage << std::endl;
+        // Reset update flag only after sending
         simulationManager.resetUpdateFlag();
     }
 }
-
-
-
 
 void NetworkManager::sendGameOverMessage(const std::string& message) {
     if (clientSocket == INVALID_SOCKET) return;
