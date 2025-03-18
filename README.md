@@ -2,7 +2,7 @@ Automatic Battle Simulation
 Project Overview
 This project consists of:
 
-An Unreal Engine 5 client for visualizing the battle simulation.
+An Unreal Engine 5.4 client for visualizing the battle simulation.
 
 A C++ server that handles the simulation logic and networking.
 Unreal Engine Client
