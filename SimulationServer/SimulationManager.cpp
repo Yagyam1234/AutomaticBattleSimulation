@@ -27,79 +27,88 @@ void SimulationManager::updateSimulation() {
     using Clock = std::chrono::steady_clock;
     using namespace std::chrono_literals;
 
-    auto simulationTime = Clock::now();
-    const auto timeStep = std::chrono::milliseconds(GameConfig::UPDATE_INTERVAL_MS);
+    const auto targetTimeStep = std::chrono::milliseconds(GameConfig::UPDATE_INTERVAL_MS);
     int stepCount = 0;
+    float accumulatedTime = 0.0f;  // For tracking sub-timestep time
+
+    auto lastUpdateTime = Clock::now();
+    auto nextUpdateTime = lastUpdateTime + targetTimeStep;
 
     std::cout << "[Server] Simulation loop started.\n";
 
     while (!exitFlag) {
-        simulationTime += timeStep;
+        // Calculate actual elapsed time since last update
+        auto currentTime = Clock::now();
+        auto elapsedTime = std::chrono::duration<float, std::milli>(currentTime - lastUpdateTime).count();
+        lastUpdateTime = currentTime;
 
-        {
-            std::lock_guard<std::mutex> lock(ballMutex);
-            if (clientConnected) {
-                // Start the simulation after client connects with a 3-second delay
-                if (!simulationStarted) {
-                    std::cout << "[Server] Client connected. Starting simulation in 3 seconds...\n";
-                    simulationStarted = true;
+        // Add to our accumulated time bank
+        accumulatedTime += elapsedTime;
 
-                    // Set the dataUpdated flag to true so client can see the initial state
-                    dataUpdated = true;
-                    dataReadyCV.notify_one();
+        // Process as many fixed timesteps as we have accumulated time for
+        while (accumulatedTime >= GameConfig::UPDATE_INTERVAL_MS && !exitFlag) {
+            {
+                std::lock_guard<std::mutex> lock(ballMutex);
+                if (clientConnected) {
+                    if (!simulationStarted) {
+                        std::cout << "[Server] Client connected. Starting simulation in 3 seconds...\n";
+                        simulationStarted = true;
 
-                   
-                    std::this_thread::sleep_for(std::chrono::seconds(3));
+                        dataUpdated = true;
+                        dataReadyCV.notify_one();
 
-                   
-                    std::cout << "[Server] Simulation started!\n";
-                }
+                        std::this_thread::sleep_for(std::chrono::seconds(3));
+                        std::cout << "[Server] Simulation started!\n";
 
-                // Only update ball positions if simulation has started
-                if (simulationStarted) {
-                    // Simplified ball movement logic
-                    for (auto& ball : balls) {
-                        if (!ball->isDead()) {
-                            std::shared_ptr<Ball> target = findNearestEnemy(ball);
-                            if (target) {
-                                ball->moveToward(target);
-                            }
-                            else {
-                                // If no valid target, make sure they still move slightly
-                                ball->wander();
-                            }
-                        }
+                        // Reset timing variables after delay
+                        lastUpdateTime = Clock::now();
+                        accumulatedTime = 0.0f;
+                        break;  // Exit the inner while loop after setup
                     }
 
-                    handleCombat();
-                    removeDeadBalls();
+                    if (simulationStarted) {
+                        // Update all active balls with a fixed time step
+                        for (auto& ball : balls) {
+                            if (!ball->isDead()) {
+                                // Pass the fixed timestep value to updateCooldowns
+                                ball->updateCooldowns();
+
+                                std::shared_ptr<Ball> target = findNearestEnemy(ball);
+                                if (target) {
+                                    ball->moveToward(target);
+                                }
+                                else {
+                                    ball->wander();
+                                }
+                            }
+                        }
+
+                        handleCombat();
+                        removeDeadBalls();
+                    }
+
+                    dataUpdated = true;
+                    dataReadyCV.notify_one();
                 }
-
-                dataUpdated = true;
-                dataReadyCV.notify_one();
             }
+
+            // Consume a fixed amount of time from our accumulator
+            accumulatedTime -= GameConfig::UPDATE_INTERVAL_MS;
+            stepCount++;
         }
 
-        auto now = Clock::now();
-        if (now < simulationTime) {
-            std::this_thread::sleep_until(simulationTime);
+        // If we're running ahead of schedule, sleep until next update time
+        nextUpdateTime = lastUpdateTime + std::chrono::milliseconds(GameConfig::UPDATE_INTERVAL_MS);
+        auto sleepTime = nextUpdateTime - Clock::now();
+        if (sleepTime > std::chrono::milliseconds(0)) {
+            std::this_thread::sleep_for(sleepTime);
         }
-        else if (now > simulationTime + 5ms) {
-            std::cout << "[Server] Warning: Simulation running behind schedule by "
-                << std::chrono::duration_cast<std::chrono::milliseconds>(now - simulationTime).count()
-                << "ms on step " << stepCount << std::endl;
-
-            simulationTime = now;
-        }
-
-        stepCount++;
     }
 
     std::cout << "[Server] Simulation loop exited after " << stepCount << " steps.\n";
 }
 
 
-// Helper method to find nearest enemy - simplified to handle the last enemy case once
 std::shared_ptr<Ball> SimulationManager::findNearestEnemy(const std::shared_ptr<Ball>& ball) {
     std::shared_ptr<Ball> target = nullptr;
     int minDist = GameConfig::GRID_SIZE * 2;
@@ -130,11 +139,12 @@ std::shared_ptr<Ball> SimulationManager::findNearestEnemy(const std::shared_ptr<
     return target;
 }
 
-
-// Handle combat interactions
 void SimulationManager::handleCombat() {
     for (auto& attacker : balls) {
         if (attacker->isDead()) continue;
+
+        // Skip if attacker is on cooldown
+        if (!attacker->canAttack()) continue;
 
         std::shared_ptr<Ball> bestTarget = nullptr;
         int bestDistance = GameConfig::GRID_SIZE * 2;
@@ -152,13 +162,15 @@ void SimulationManager::handleCombat() {
         }
 
         if (bestTarget) {
+            // Reset the attack cooldown when an attack is made
+            attacker->resetAttackCooldown();
+
             bool targetKilled = bestTarget->takeDamage(1);
             std::string teamName = attacker->isRedTeam() ? "Red" : "Blue";
             std::cout << "[Server] " << teamName << " Ball attacked! Target HP: " << bestTarget->getHp() << std::endl;
         }
     }
 }
-
 
 void SimulationManager::removeDeadBalls() {
     balls.erase(

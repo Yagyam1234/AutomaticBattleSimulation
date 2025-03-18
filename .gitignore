@@ -3,6 +3,8 @@ UnrealSimulation/Binaries/
 UnrealSimulation/Intermediate/
 UnrealSimulation/Saved/
 UnrealSimulation/DerivedDataCache/
+UnrealSimulation/.vs/*
+
 
 # CMake: Ignore build artifacts
 SimulationServer/build/
