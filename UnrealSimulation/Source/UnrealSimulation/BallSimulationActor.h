@@ -7,7 +7,9 @@
 #include "Json.h"
 #include "BallSimulationActor.generated.h"
 
-USTRUCT(BlueprintType)
+class UUGameOverWidget;
+
+USTRUCT()
 struct FBallState
 {
 	GENERATED_BODY()
@@ -22,7 +24,7 @@ struct FBallState
 };
 
 UCLASS()
-class UNREALSIMULATION_API ABallSimulationActor : public AActor
+class UNREALSIMULATION_API ABallSimulationActor : public APawn
 {
 	GENERATED_BODY()
     
@@ -49,7 +51,8 @@ public:
     
 	// Handling Initialization
 	void InitializeClient(const FString& Data);
-    
+	void ShowGameOverWidget(const FString& WinningTeamMessage);
+
 	// Handling Simulation Updates
 	void ParseSimulationData(const FString& Data);
 
@@ -62,6 +65,13 @@ public:
 
 private:
 	// Networking
+
+	UPROPERTY()
+	ULineBatchComponent* LineBatchComponent;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUGameOverWidget> GameOverWidgetClass;
+	
 	FSocket* Socket;
 	TArray<uint8> RecvBuffer;
     

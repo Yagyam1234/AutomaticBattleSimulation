@@ -6,7 +6,7 @@
 #include <algorithm>
 
 SimulationManager::SimulationManager()
-    : clientConnected(false), exitFlag(false), dataUpdated(false) {}
+    : clientConnected(false), exitFlag(false), dataUpdated(false), simulationStarted(false) {}
 
 SimulationManager::~SimulationManager() {}
 
@@ -39,39 +39,41 @@ void SimulationManager::updateSimulation() {
         {
             std::lock_guard<std::mutex> lock(ballMutex);
             if (clientConnected) {
-                int redCount = 0, blueCount = 0;
-                std::shared_ptr<Ball> lastEnemy = nullptr;
+                // Start the simulation after client connects with a 3-second delay
+                if (!simulationStarted) {
+                    std::cout << "[Server] Client connected. Starting simulation in 3 seconds...\n";
+                    simulationStarted = true;
 
-                // ✅ Count teams and find last enemy
-                for (const auto& ball : balls) {
-                    if (!ball->isDead()) {
-                        if (ball->isRedTeam()) redCount++;
-                        else blueCount++;
-                    }
+                    // Set the dataUpdated flag to true so client can see the initial state
+                    dataUpdated = true;
+                    dataReadyCV.notify_one();
+
+                   
+                    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+                   
+                    std::cout << "[Server] Simulation started!\n";
                 }
 
-                bool onlyOneEnemyLeft = (redCount == 1 && blueCount > 1) || (blueCount == 1 && redCount > 1);
-
-                for (auto& ball : balls) {
-                    if (!ball->isDead()) {
-                        std::shared_ptr<Ball> target = findNearestEnemy(ball);
-
-                        // ✅ If only one enemy remains, force all to target it
-                        if (onlyOneEnemyLeft && target) {
-                            ball->moveToward(target);
-                        }
-                        else if (target) {
-                            ball->moveToward(target);
-                        }
-                        else {
-                            // ✅ If no valid target, make sure they still move slightly
-                            ball->wander(); // New function to avoid stuck units
+                // Only update ball positions if simulation has started
+                if (simulationStarted) {
+                    // Simplified ball movement logic
+                    for (auto& ball : balls) {
+                        if (!ball->isDead()) {
+                            std::shared_ptr<Ball> target = findNearestEnemy(ball);
+                            if (target) {
+                                ball->moveToward(target);
+                            }
+                            else {
+                                // If no valid target, make sure they still move slightly
+                                ball->wander();
+                            }
                         }
                     }
-                }
 
-                handleCombat();
-                removeDeadBalls();
+                    handleCombat();
+                    removeDeadBalls();
+                }
 
                 dataUpdated = true;
                 dataReadyCV.notify_one();
@@ -97,7 +99,7 @@ void SimulationManager::updateSimulation() {
 }
 
 
-// Helper method to find nearest enemy
+// Helper method to find nearest enemy - simplified to handle the last enemy case once
 std::shared_ptr<Ball> SimulationManager::findNearestEnemy(const std::shared_ptr<Ball>& ball) {
     std::shared_ptr<Ball> target = nullptr;
     int minDist = GameConfig::GRID_SIZE * 2;
@@ -120,7 +122,7 @@ std::shared_ptr<Ball> SimulationManager::findNearestEnemy(const std::shared_ptr<
         }
     }
 
-    // ✅ If only one enemy remains, force all to target it
+    // If only one enemy remains, force all to target it
     if (enemyCount == 1 && lastEnemy) {
         return lastEnemy;
     }
@@ -176,9 +178,9 @@ void SimulationManager::removeDeadBalls() {
         winningTeam = redExists ? "Red Team Wins!" : "Blue Team Wins!";
         std::cout << "[Server] Game Over! " << winningTeam << std::endl;
 
-        exitFlag = true;  // 🔹 Stops simulation loop
+        exitFlag = true;  // Stops simulation loop
         dataUpdated = true;
-        dataReadyCV.notify_all();  // 🔹 Notifies network threads to stop
+        dataReadyCV.notify_all();  // Notifies network threads to stop
     }
 }
 

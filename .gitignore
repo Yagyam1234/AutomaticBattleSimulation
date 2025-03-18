@@ -5,9 +5,9 @@ UnrealSimulation/Saved/
 UnrealSimulation/DerivedDataCache/
 
 # CMake: Ignore build artifacts
-# Ignore CMake build artifacts
 SimulationServer/build/
 SimulationServer/.vs/
+SimulationServer/.idea/
 SimulationServer/CMakeCache.txt
 SimulationServer/CMakeFiles/
 SimulationServer/*.vcxproj*
@@ -22,3 +22,15 @@ SimulationServer/*.VC.db
 Thumbs.db
 *.bak
 *.tmp
+
+# Ignore Visual Studio and JetBrains IDE folders
+ UnrealSimulation/.vs
+ UnrealSimulation/.idea
+
+# Ignore XML and similar extensions
+*.xml
+*.xsd
+*.xsl
+*.xslt
+*.xsd
+*.resx

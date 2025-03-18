@@ -37,4 +37,5 @@ private:
     std::condition_variable dataReadyCV;
     bool dataUpdated;
     std::string winningTeam;
+    bool simulationStarted;
 };

@@ -6,7 +6,7 @@ public class UnrealSimulation : ModuleRules
 {
 	public UnrealSimulation(ReadOnlyTargetRules Target) : base(Target)
 	{
-		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+		PCHUsage = PCHUsageMode.Default;
 	
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject",
 			"Engine", "UMG","InputCore", "EnhancedInput","Sockets", "Networking", "Json", "JsonUtilities" });
