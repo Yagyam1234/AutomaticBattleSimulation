@@ -228,11 +228,23 @@ void ABallSimulationActor::ParseSimulationData(const FString& Data) {
     FScopeLock Lock(&DataMutex);
 
     if (Data.Contains("GameOver:")) {
-        FString WinningTeamMessage = Data.RightChop(9);
-    
-        // Clear simulation state
+        int32 GameOverIndex = Data.Find("GameOver:");
+        FString WinningTeamMessage = Data.RightChop(GameOverIndex + 9);  // Extract only the team name
+
+        // Remove any extra data after the team name
+        int32 EndIndex;
+        if (WinningTeamMessage.FindChar(';', EndIndex)) {
+            WinningTeamMessage = WinningTeamMessage.Left(EndIndex);
+        }
+
+        // Clear all balls since the game is over
         Balls.Empty();
-    
+
+        // Log the cleaned-up game over message
+        UE_LOG(LogTemp, Warning, TEXT("[Client] GAME OVER! %s"), *WinningTeamMessage);
+
+        // Show Game Over UI
+        ShowGameOverWidget(WinningTeamMessage);
         // Log game over event
         UE_LOG(LogTemp, Warning, TEXT("[Client] GAME OVER! %s"), *WinningTeamMessage);
 
