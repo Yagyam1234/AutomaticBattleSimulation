@@ -7,10 +7,10 @@ A C++ server that handles the simulation logic and networking.
 Unreal Engine Client
 Developed using Unreal Engine 5.
 The client connects to the server and updates the battle simulation in real time.
-Located in the UnrealSimulation folder.
+Located in the UnrealSimulation/ folder.
 Running the Unreal Client
 Open Unreal Engine 5.
-Navigate to the UnrealSimulation folder.
+Navigate to the UnrealSimulation/ folder.
 Open the .uproject file.
 Click Play to start the client.
 C++ Server
